@@ -37,29 +37,29 @@ MainWindow::MainWindow(QWidget *parent)
     connect(colorBtn, &QPushButton::clicked, this, &MainWindow::changeColor);
     qDebug() << "Color button created and connected";
 
-    // 画笔大小设置
-    sizeSpinBox = new QSpinBox(this);
-    if (!sizeSpinBox) {
-        qCritical() << "Failed to create size spin box";
-        return;
-    }
-    sizeSpinBox->setRange(1, 50);
-    sizeSpinBox->setValue(3);
-    sizeSpinBox->setFixedWidth(60); // 设置固定宽度
-    connect(sizeSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &MainWindow::changeBrushSize);
-    qDebug() << "Size spin box created and connected";
-
     // 形状选择
     shapeComboBox = new QComboBox(this);
     if (!shapeComboBox) {
         qCritical() << "Failed to create shape combo box";
         return;
     }
-    shapeComboBox->addItems({"自由绘制", "直线", "矩形", "椭圆", "箭头", "五角星", "菱形", "心形", "橡皮擦"});
-    shapeComboBox->setFixedWidth(120); // 设置固定宽度
+    shapeComboBox->addItems({"自由绘制", "直线", "矩形", "椭圆", "箭头", "五角星", "菱形", "心形", "橡皮擦", "编组选择"});
+    shapeComboBox->setFixedWidth(120);
+    shapeComboBox->setSizeAdjustPolicy(QComboBox::AdjustToContents); // ✅ 正确位置
     connect(shapeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::changeShape);
+
+    // 画笔大小设置（后创建）
+    sizeSpinBox = new QSpinBox(this);
+    if (!sizeSpinBox) {
+        qCritical() << "Failed to create size spin box";
+        return;
+    }
+    sizeSpinBox->setMaximum(100);
+    sizeSpinBox->setValue(3);
+    sizeSpinBox->setFixedWidth(60);
+    connect(sizeSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &MainWindow::changeBrushSize);
     qDebug() << "Shape combo box created and connected";
 
     // 撤销/重做按钮
@@ -77,6 +77,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(redoAction, &QAction::triggered, this, &MainWindow::redo);
     qDebug() << "Undo and redo actions created and connected";
 
+    openBtn = new QPushButton("打开", this);
+    connect(openBtn, &QPushButton::clicked, this, &MainWindow::openImage);
     // 创建工具栏
     createToolBar();
 
@@ -121,6 +123,9 @@ void MainWindow::createToolBar()
 
     toolBar->addWidget(colorBtn);
     qDebug() << "Color button added to toolbar";
+
+    toolBar->addWidget(openBtn);  // 添加打开按钮
+    qDebug() << "Open button added to toolbar";
 
     QPushButton *saveBtn = new QPushButton("保存", this);
     if (!saveBtn) {
@@ -191,3 +196,12 @@ void MainWindow::redo()
     paintArea->redo();
     update(); // 强制更新界面
 }
+void MainWindow::openImage()
+    {
+        qDebug() << "Opening image";
+        QString filePath = QFileDialog::getOpenFileName(this, "打开图片", "", "PNG文件(*.png)");
+        if (!filePath.isEmpty()) {
+                paintArea->loadImage(filePath);
+            }
+        qDebug() << "Image opened";
+    }

@@ -19,6 +19,7 @@ private slots:
     void changeBrushSize(int size);
     void changeShape(int index);
     void saveImage();
+    void openImage();
     void undo();
     void redo();
 
@@ -28,6 +29,7 @@ private:
     QPushButton *colorBtn;
     QSpinBox *sizeSpinBox;
     QComboBox *shapeComboBox;
+    QPushButton *openBtn;
     QAction *undoAction;
     QAction *redoAction;
 
