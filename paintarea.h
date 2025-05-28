@@ -36,6 +36,8 @@ public:
     void loadImage(const QString &fileName);
     void undo();
     void redo();
+    // 在PaintArea类声明中添加
+    void clearSelection();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -72,10 +74,10 @@ private:
     DrawShape currentShape;
     QColor penColor;
     int penWidth;
-
+    void saveState();
     QStack<QImage> undoStack;
     QStack<QImage> redoStack;
 
-    void saveState();
+
 };
 #endif // PAINTAREA_H
