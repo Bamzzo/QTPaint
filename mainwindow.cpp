@@ -84,11 +84,11 @@ void MainWindow::createToolBar()
     connect(colorBtn, &QPushButton::clicked, this, &MainWindow::changeColor);
 
     // 文件操作按钮
-    openBtn = new QPushButton("打开", this);
+    openBtn = new QPushButton("打开(CTRL+O)", this);
     openBtn->setStyleSheet("QPushButton { padding: 3px 8px; }");
     connect(openBtn, &QPushButton::clicked, this, &MainWindow::openImage);
 
-    saveBtn = new QPushButton("保存", this);
+    saveBtn = new QPushButton("保存(CTRL+S)", this);
     saveBtn->setStyleSheet("QPushButton { padding: 3px 8px; }");
     connect(saveBtn, &QPushButton::clicked, this, &MainWindow::saveImage);
 
@@ -136,9 +136,12 @@ void MainWindow::createStatusBar()
 
 void MainWindow::setupShortcuts()
 {
-    // 添加更多快捷键
+    // 文件操作
     new QShortcut(QKeySequence::Save, this, SLOT(saveImage()));
     new QShortcut(QKeySequence::Open, this, SLOT(openImage()));
+
+
+
 }
 
 void MainWindow::changeColor()

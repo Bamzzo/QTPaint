@@ -61,23 +61,22 @@ void PaintArea::updateScaleAndOffset()
 
 QPoint PaintArea::physicalToLogical(const QPoint &physicalPoint) const
 {
-    QPoint adjustedPoint = physicalPoint;
-
-    // 添加边界保护
-    if (!originalImage.isNull()) {
-        QRect contentRect(offset, origImageSize * scaleFactor);
-        adjustedPoint.setX(qBound(contentRect.left(), physicalPoint.x(), contentRect.right()));
-        adjustedPoint.setY(qBound(contentRect.top(), physicalPoint.y(), contentRect.bottom()));
-    }
     if (originalImage.isNull()) {
         return QPoint(
             qBound(0, physicalPoint.x(), width()-1),
             qBound(0, physicalPoint.y(), height()-1));
     }
-    int x = qBound(0.0, (physicalPoint.x() - offset.x()) / scaleFactor, origImageSize.width() - 1.0);
-    int y = qBound(0.0, (physicalPoint.y() - offset.y()) / scaleFactor, origImageSize.height() - 1.0);
+
+    QPoint adjustedPoint = physicalPoint;
+    QRect contentRect(offset, origImageSize * scaleFactor);
+    adjustedPoint.setX(qBound(contentRect.left(), physicalPoint.x(), contentRect.right()));
+    adjustedPoint.setY(qBound(contentRect.top(), physicalPoint.y(), contentRect.bottom()));
+
+    int x = (adjustedPoint.x() - offset.x()) / scaleFactor;
+    int y = (adjustedPoint.y() - offset.y()) / scaleFactor;
     return QPoint(x, y);
 }
+
 
 QPoint PaintArea::logicalToPhysical(const QPoint &logicalPoint) const
 {
@@ -102,7 +101,6 @@ void PaintArea::resizeEvent(QResizeEvent *event)
     QWidget::resizeEvent(event);
     updateScaleAndOffset();
 
-
     if (!originalImage.isNull()) {
         if (image.size() != originalImage.size()) {
             QImage newImage(originalImage.size(), QImage::Format_ARGB32_Premultiplied);
@@ -112,18 +110,18 @@ void PaintArea::resizeEvent(QResizeEvent *event)
             image = newImage;
         }
     } else {
-        if (image.size() != event->size()) {
-            QImage newImage(event->size(), QImage::Format_ARGB32_Premultiplied);
-            newImage.fill(Qt::white);
-            QPainter painter(&newImage);
-            painter.drawImage(0, 0, image);
-            image = newImage;
-        }
+        // 空白画布时，直接调整image大小
+        QImage newImage(event->size(), QImage::Format_ARGB32_Premultiplied);
+        newImage.fill(Qt::white);
+        QPainter painter(&newImage);
+        painter.drawImage(0, 0, image);
+        image = newImage;
     }
 
     tempImage = image;
     update();
 }
+
 
 void PaintArea::saveImage(const QString &fileName)
 {
@@ -350,44 +348,59 @@ void PaintArea::undo()
         redoStack.push(undoStack.pop());
         QImage stateImage = undoStack.top();
 
-        // 直接更新图像
-        image = stateImage;
+        // 检查是否回到了初始空白状态
+        if (undoStack.size() == 1) {
+            // 重置为初始空白状态
+            originalImage = QImage();
+            image = QImage(size(), QImage::Format_ARGB32_Premultiplied);
+            image.fill(Qt::white);
+            updateScaleAndOffset();
+        } else {
+            // 正常撤销操作
+            if (originalImage.isNull()) {
+                image = stateImage;
+            } else {
+                originalImage = stateImage;
+                image = QImage(originalImage.size(), QImage::Format_ARGB32_Premultiplied);
+                image.fill(Qt::transparent);
+            }
+        }
+        update();
+    }
+}
+
+void PaintArea::redo()
+{
+    if (!redoStack.isEmpty()) {
+        QImage stateImage = redoStack.top();
+        undoStack.push(redoStack.pop());
+
+        if (originalImage.isNull()) {
+            image = stateImage;
+        } else {
+            originalImage = stateImage;
+            image = QImage(originalImage.size(), QImage::Format_ARGB32_Premultiplied);
+            image.fill(Qt::transparent);
+        }
+
         updateScaleAndOffset();
         update();
     }
 }
 
 
-void PaintArea::redo()
-{
-    if (!redoStack.isEmpty()) {
-        undoStack.push(redoStack.pop());
-        QImage stateImage = undoStack.top();
-
-        originalImage = QImage(stateImage.size(), QImage::Format_ARGB32_Premultiplied);
-        originalImage.fill(Qt::transparent);
-        QPainter painter(&originalImage);
-        painter.drawImage(0, 0, stateImage);
-
-        image = QImage(stateImage.size(), QImage::Format_ARGB32_Premultiplied);
-        image.fill(Qt::transparent);
-
-        QResizeEvent fakeEvent(size(), size());
-        resizeEvent(&fakeEvent);
-        update();
-    }
-}
-
 
 void PaintArea::saveState()
 {
-    // 创建组合图像进行保存
-    QImage stateImage = originalImage.isNull() ?
-                            image.copy() :
-                            originalImage.copy();
+    QImage stateImage;
 
-    QPainter painter(&stateImage);
-    painter.drawImage(0, 0, image);
+    if (originalImage.isNull()) {
+        stateImage = image.copy();
+    } else {
+        stateImage = originalImage.copy();
+        QPainter painter(&stateImage);
+        painter.drawImage(0, 0, image);
+    }
 
     if (undoStack.isEmpty() || undoStack.top() != stateImage) {
         undoStack.push(stateImage);
