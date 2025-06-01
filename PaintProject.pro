@@ -5,11 +5,14 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 SOURCES += \
     main.cpp \
     mainwindow.cpp \
-    paintarea.cpp
+    paintarea.cpp \
+    shapes.cpp
 
 HEADERS += \
     mainwindow.h \
-    paintarea.h
+    paintarea.h \
+    shape.h \
+    shapes.h
 
 
 # Default rules for deployment.

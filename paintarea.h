@@ -1,5 +1,6 @@
 #ifndef PAINTAREA_H
 #define PAINTAREA_H
+
 #include <QPaintEvent>
 #include <QMouseEvent>
 #include <QWidget>
@@ -7,11 +8,11 @@
 #include <QPainter>
 #include <QStack>
 #include <QPoint>
+#include "shapes.h"
 
 class PaintArea : public QWidget
 {
     Q_OBJECT
-    // paintarea.h
 public:
     void resizeImage(const QSize &newSize);
 
@@ -36,7 +37,6 @@ public:
     void loadImage(const QString &fileName);
     void undo();
     void redo();
-    // 在PaintArea类声明中添加
     void clearSelection();
 
 protected:
@@ -45,40 +45,39 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
-    // 添加以下成员变量
-    // paintarea.h
+
 private:
     QPoint physicalToLogical(const QPoint &physicalPoint) const;
     QPoint logicalToPhysical(const QPoint &logicalPoint) const;
     QRect logicalToPhysical(const QRect &logicalRect) const;
     void updateScaleAndOffset();
+    void saveState();
 
-    QSize origImageSize;       // 原始图片尺寸
-    double scaleFactor;        // 当前缩放比例
-    QPoint offset;             // 图片偏移量（用于居中）
-    void drawShapeToImage(const QPoint &endPoint);
-    void drawStar(QPainter &painter, const QRect &rect);
-    void drawDiamond(QPainter &painter, const QRect &rect);
-    void drawHeart(QPainter &painter, const QRect &rect);
+    QSize origImageSize;
+    double scaleFactor;
+    QPoint offset;
 
     QImage image;
     QImage originalImage;
     QImage tempImage;
-    QPoint lastPoint;
-    QPoint firstPoint;
+
+    bool isSelecting;
+    QRect selectionRect;
     QPoint selectionStart;
     QPoint selectionEnd;
-    bool isSelecting = false;
-    QRect selectionRect;
+
     bool drawing;
-    DrawShape currentShape;
+    DrawShape currentShapeType;
+    Shape* currentShape; // 当前正在绘制的形状
+
     QColor penColor;
     int penWidth;
-    void saveState();
+
     QStack<QImage> undoStack;
     QStack<QImage> redoStack;
-
 signals:
     void cursorPositionChanged(const QPoint& pos);
+
 };
+
 #endif // PAINTAREA_H

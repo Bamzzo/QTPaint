@@ -3,21 +3,19 @@
 #include <QDebug>
 #include <QResizeEvent>
 #include <cmath>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#include <QFileDialog>
+#include "shapes.h"
 
 PaintArea::PaintArea(QWidget *parent) : QWidget(parent)
 {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setAttribute(Qt::WA_StaticContents);
-    setMouseTracking(true);  // 新增：启用鼠标追踪
+    setMouseTracking(true);
 
     isSelecting = false;
     selectionRect = QRect();
     drawing = false;
-    currentShape = Freehand;
+    currentShapeType = Freehand;
     image = QImage(800, 600, QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::white);
     tempImage = image;
@@ -39,7 +37,7 @@ void PaintArea::setPenWidth(int width)
 
 void PaintArea::setDrawShape(DrawShape shape)
 {
-    currentShape = shape;
+    currentShapeType = shape;
 }
 
 void PaintArea::updateScaleAndOffset()
@@ -61,22 +59,24 @@ void PaintArea::updateScaleAndOffset()
 
 QPoint PaintArea::physicalToLogical(const QPoint &physicalPoint) const
 {
+    QPoint adjustedPoint = physicalPoint;
+
+    if (!originalImage.isNull()) {
+        QRect contentRect(offset, origImageSize * scaleFactor);
+        adjustedPoint.setX(qBound(contentRect.left(), physicalPoint.x(), contentRect.right()));
+        adjustedPoint.setY(qBound(contentRect.top(), physicalPoint.y(), contentRect.bottom()));
+    }
+
     if (originalImage.isNull()) {
         return QPoint(
             qBound(0, physicalPoint.x(), width()-1),
             qBound(0, physicalPoint.y(), height()-1));
     }
 
-    QPoint adjustedPoint = physicalPoint;
-    QRect contentRect(offset, origImageSize * scaleFactor);
-    adjustedPoint.setX(qBound(contentRect.left(), physicalPoint.x(), contentRect.right()));
-    adjustedPoint.setY(qBound(contentRect.top(), physicalPoint.y(), contentRect.bottom()));
-
-    int x = (adjustedPoint.x() - offset.x()) / scaleFactor;
-    int y = (adjustedPoint.y() - offset.y()) / scaleFactor;
+    int x = qBound(0.0, (physicalPoint.x() - offset.x()) / scaleFactor, origImageSize.width() - 1.0);
+    int y = qBound(0.0, (physicalPoint.y() - offset.y()) / scaleFactor, origImageSize.height() - 1.0);
     return QPoint(x, y);
 }
-
 
 QPoint PaintArea::logicalToPhysical(const QPoint &logicalPoint) const
 {
@@ -101,6 +101,7 @@ void PaintArea::resizeEvent(QResizeEvent *event)
     QWidget::resizeEvent(event);
     updateScaleAndOffset();
 
+
     if (!originalImage.isNull()) {
         if (image.size() != originalImage.size()) {
             QImage newImage(originalImage.size(), QImage::Format_ARGB32_Premultiplied);
@@ -110,18 +111,18 @@ void PaintArea::resizeEvent(QResizeEvent *event)
             image = newImage;
         }
     } else {
-        // 空白画布时，直接调整image大小
-        QImage newImage(event->size(), QImage::Format_ARGB32_Premultiplied);
-        newImage.fill(Qt::white);
-        QPainter painter(&newImage);
-        painter.drawImage(0, 0, image);
-        image = newImage;
+        if (image.size() != event->size()) {
+            QImage newImage(event->size(), QImage::Format_ARGB32_Premultiplied);
+            newImage.fill(Qt::transparent);
+            QPainter painter(&newImage);
+            painter.drawImage(0, 0, image);
+            image = newImage;
+        }
     }
 
     tempImage = image;
     update();
 }
-
 
 void PaintArea::saveImage(const QString &fileName)
 {
@@ -133,27 +134,25 @@ void PaintArea::saveImage(const QString &fileName)
 
 void PaintArea::loadImage(const QString &fileName)
 {
-    qDebug() << "Opening image";
     QImage loadedImage;
     if (!loadedImage.load(fileName)) return;
 
-    // 保存当前状态（导入图片前的状态）
+    // 保存当前状态到撤销栈
     saveState();
 
-    // 设置新图片
     originalImage = loadedImage.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     image = QImage(originalImage.size(), QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
-    QPainter painter(&image);
-    painter.drawImage(0, 0, originalImage);
 
-    // 保存新状态（仅图片导入）
-    saveState();
+    // 保存仅包含图片的状态到撤销栈
+    QImage initialState = originalImage.copy();
+    undoStack.push(initialState);
+    redoStack.clear();
 
     updateScaleAndOffset();
     update();
-    qDebug() << "Image opened";
 }
+
 
 void PaintArea::paintEvent(QPaintEvent *event)
 {
@@ -190,16 +189,50 @@ void PaintArea::paintEvent(QPaintEvent *event)
 
 void PaintArea::mousePressEvent(QMouseEvent *event)
 {
-    if (currentShape == GroupSelect) {
+    if (currentShapeType == GroupSelect) {
         selectionStart = physicalToLogical(event->pos());
         isSelecting = true;
         return;
     }
 
     if (event->button() == Qt::LeftButton) {
-        firstPoint = lastPoint = physicalToLogical(event->pos());
+        QPoint logicalPoint = physicalToLogical(event->pos());
         drawing = true;
         tempImage = image.copy();
+
+        // 根据当前形状类型创建对应的Shape对象
+        switch(currentShapeType) {
+        case Freehand:
+            currentShape = new PathShape(logicalPoint, penColor, penWidth, false);
+            break;
+        case Line:
+            currentShape = new LineShape(logicalPoint, penColor, penWidth);
+            break;
+        case Rectangle:
+            currentShape = new RectangleShape(logicalPoint, penColor, penWidth);
+            break;
+        case Ellipse:
+            currentShape = new EllipseShape(logicalPoint, penColor, penWidth);
+            break;
+        case Arrow:
+            currentShape = new ArrowShape(logicalPoint, penColor, penWidth);
+            break;
+        case Star:
+            currentShape = new StarShape(logicalPoint, penColor, penWidth);
+            break;
+        case Diamond:
+            currentShape = new DiamondShape(logicalPoint, penColor, penWidth);
+            break;
+        case Heart:
+            currentShape = new HeartShape(logicalPoint, penColor, penWidth);
+            break;
+        case Eraser:
+            currentShape = new PathShape(logicalPoint, Qt::white, penWidth, true);
+            break;
+        case GroupSelect:
+            // 已在上面处理
+            break;
+        }
     }
 }
 
@@ -207,6 +240,7 @@ void PaintArea::mouseMoveEvent(QMouseEvent *event)
 {
     QPoint currentLogicalPos = physicalToLogical(event->pos());
     emit cursorPositionChanged(currentLogicalPos);
+
 
     if (isSelecting) {
         selectionEnd = currentLogicalPos;
@@ -219,19 +253,15 @@ void PaintArea::mouseMoveEvent(QMouseEvent *event)
         return;
     }
 
-    if ((event->buttons() & Qt::LeftButton) && drawing) {
-        if (currentShape == Freehand || currentShape == Eraser) {
-            QPainter painter(&tempImage);
-            painter.setPen(currentShape == Eraser ?
-                               QPen(Qt::white, penWidth, Qt::SolidLine, Qt::RoundCap) :
-                               QPen(penColor, penWidth, Qt::SolidLine, Qt::RoundCap));
-            painter.drawLine(lastPoint, currentLogicalPos);
-            lastPoint = currentLogicalPos;
-            update();
-        } else {
-            tempImage = image.copy();
-            drawShapeToImage(currentLogicalPos);
-        }
+    if ((event->buttons() & Qt::LeftButton) && drawing && currentShape) {
+        currentShape->update(currentLogicalPos);
+
+        // 实时绘制到临时图像
+        tempImage = image.copy();
+        QPainter painter(&tempImage);
+        currentShape->draw(painter);
+
+        update();
     }
 }
 
@@ -256,16 +286,21 @@ void PaintArea::mouseReleaseEvent(QMouseEvent *event)
         return;
     }
 
-    if (event->button() == Qt::LeftButton && drawing) {
+
+    if (event->button() == Qt::LeftButton && drawing && currentShape) {
         QPainter painter(&image);
-        painter.drawImage(0, 0, tempImage);
+        currentShape->draw(painter);
+
+        delete currentShape;
+        currentShape = nullptr;  // 添加这行
+
         saveState();
         drawing = false;
         update();
     }
+
 }
 
-// 新增清除选择方法
 void PaintArea::clearSelection()
 {
     isSelecting = false;
@@ -273,98 +308,22 @@ void PaintArea::clearSelection()
     update();
 }
 
-void PaintArea::drawShapeToImage(const QPoint &endPoint)
-{
-    QPainter painter(&tempImage);
-    painter.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
-
-    QRect rect = QRect(firstPoint, endPoint).normalized();  // 修正变量名
-
-    QPen pen(currentShape == Eraser ? Qt::white : penColor, penWidth);
-    pen.setCapStyle(Qt::RoundCap);
-    pen.setJoinStyle(Qt::RoundJoin);
-    painter.setPen(pen);
-
-    if (currentShape != Eraser) {
-        QBrush brush(currentShape == Heart ? penColor : (currentShape == Rectangle ||
-                                                         currentShape == Ellipse || currentShape == Star ||
-                                                         currentShape == Diamond) ? penColor : Qt::NoBrush);
-        painter.setBrush(brush);
-    }
-    switch (currentShape) {
-    case Freehand:  // 已在mouseMoveEvent处理
-    case Eraser:    // 已在mouseMoveEvent处理
-        break;
-    case Line:
-        painter.drawLine(firstPoint, endPoint);
-        break;
-    case Rectangle:
-        painter.drawRect(rect);
-        break;
-    case Ellipse:
-        painter.drawEllipse(rect);
-        break;
-    case Arrow: {
-        painter.drawLine(firstPoint, endPoint);
-        qreal arrowSize = penWidth * 4;
-        QLineF line(endPoint, firstPoint);
-        double angle = std::atan2(-line.dy(), line.dx());
-
-        QPointF arrowP1 = endPoint + QPointF(
-                              std::sin(angle + M_PI/3) * arrowSize,
-                              std::cos(angle + M_PI/3) * arrowSize
-                              );
-        QPointF arrowP2 = endPoint + QPointF(
-                              std::sin(angle + M_PI - M_PI/3) * arrowSize,
-                              std::cos(angle + M_PI - M_PI/3) * arrowSize
-                              );
-
-        painter.drawLine(endPoint, arrowP1);
-        painter.drawLine(endPoint, arrowP2);
-        break;
-    }
-    case Star:
-        drawStar(painter, rect);
-        break;
-    case Diamond:
-        drawDiamond(painter, rect);
-        break;
-    case Heart:
-        drawHeart(painter, rect);
-        break;
-    case GroupSelect: // 无需绘制
-        break;
-    default:
-        qWarning() << "Unhandled shape type:" << currentShape;
-        break;
-    }
-    update();
-}
-
-
 void PaintArea::undo()
 {
     if (undoStack.size() > 1) {
         redoStack.push(undoStack.pop());
         QImage stateImage = undoStack.top();
 
-        // 检查是否回到了初始空白状态
-        if (undoStack.size() == 1) {
-            // 重置为初始空白状态
-            originalImage = QImage();
-            image = QImage(size(), QImage::Format_ARGB32_Premultiplied);
-            image.fill(Qt::white);
-            updateScaleAndOffset();
-        } else {
-            // 正常撤销操作
-            if (originalImage.isNull()) {
-                image = stateImage;
-            } else {
-                originalImage = stateImage;
-                image = QImage(originalImage.size(), QImage::Format_ARGB32_Premultiplied);
-                image.fill(Qt::transparent);
-            }
-        }
+        originalImage = QImage(stateImage.size(), QImage::Format_ARGB32_Premultiplied);
+        originalImage.fill(Qt::transparent);
+        QPainter painter(&originalImage);
+        painter.drawImage(0, 0, stateImage);
+
+        image = QImage(stateImage.size(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+
+        QResizeEvent fakeEvent(size(), size());
+        resizeEvent(&fakeEvent);
         update();
     }
 }
@@ -372,92 +331,35 @@ void PaintArea::undo()
 void PaintArea::redo()
 {
     if (!redoStack.isEmpty()) {
-        QImage stateImage = redoStack.top();
         undoStack.push(redoStack.pop());
+        QImage stateImage = undoStack.top();
 
-        if (originalImage.isNull()) {
-            image = stateImage;
-        } else {
-            originalImage = stateImage;
-            image = QImage(originalImage.size(), QImage::Format_ARGB32_Premultiplied);
-            image.fill(Qt::transparent);
-        }
+        originalImage = QImage(stateImage.size(), QImage::Format_ARGB32_Premultiplied);
+        originalImage.fill(Qt::transparent);
+        QPainter painter(&originalImage);
+        painter.drawImage(0, 0, stateImage);
 
-        updateScaleAndOffset();
+        image = QImage(stateImage.size(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+
+        QResizeEvent fakeEvent(size(), size());
+        resizeEvent(&fakeEvent);
         update();
     }
 }
 
-
-
 void PaintArea::saveState()
 {
-    QImage stateImage;
+    QImage stateImage = originalImage.isNull() ?
+                            image.copy() :
+                            originalImage.copy();
 
-    if (originalImage.isNull()) {
-        stateImage = image.copy();
-    } else {
-        stateImage = originalImage.copy();
-        QPainter painter(&stateImage);
-        painter.drawImage(0, 0, image);
-    }
+    QPainter painter(&stateImage);
+    painter.drawImage(0, 0, image);
 
     if (undoStack.isEmpty() || undoStack.top() != stateImage) {
         undoStack.push(stateImage);
         if (undoStack.size() > 50) undoStack.removeFirst();
         redoStack.clear();
     }
-}
-
-
-void PaintArea::drawStar(QPainter &painter, const QRect &rect)
-{
-    QPainterPath path;
-    qreal radius = qMin(rect.width(), rect.height()) / 2;
-    QPoint center = rect.center();
-
-    for (int i = 0; i < 5; ++i) {
-        qreal angle = 2 * M_PI * i / 5 - M_PI/2;
-        QPointF outerPoint = center + QPointF(radius * cos(angle), radius * sin(angle));
-        if (i == 0) {
-            path.moveTo(outerPoint);
-        } else {
-            path.lineTo(outerPoint);
-        }
-
-        angle += M_PI / 5;
-        QPointF innerPoint = center + QPointF(radius/2 * cos(angle), radius/2 * sin(angle));
-        path.lineTo(innerPoint);
-    }
-    path.closeSubpath();
-    painter.drawPath(path);
-}
-
-void PaintArea::drawDiamond(QPainter &painter, const QRect &rect)
-{
-    QPolygon diamond;
-    diamond << QPoint(rect.center().x(), rect.top())
-            << QPoint(rect.right(), rect.center().y())
-            << QPoint(rect.center().x(), rect.bottom())
-            << QPoint(rect.left(), rect.center().y());
-    painter.drawPolygon(diamond);
-}
-
-
-
-
-void PaintArea::drawHeart(QPainter &painter, const QRect &rect)
-{
-    QPainterPath path;
-    qreal scale = qMin(rect.width(), rect.height()) / 100;
-    QPoint center = rect.center();
-
-    path.moveTo(center.x(), center.y() + 25*scale);
-    path.cubicTo(center.x() + 45*scale, center.y() - 55*scale,
-                 center.x() + 95*scale, center.y() - 35*scale,
-                 center.x(), center.y() + 45*scale);
-    path.cubicTo(center.x() - 95*scale, center.y() - 35*scale,
-                 center.x() - 45*scale, center.y() - 55*scale,
-                 center.x(), center.y() + 25*scale);
-    painter.fillPath(path, penColor);
 }

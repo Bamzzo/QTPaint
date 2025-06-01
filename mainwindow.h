@@ -29,22 +29,19 @@ private slots:
 private:
     void createToolBar();
     void createStatusBar();
-    void setupShortcuts();
+    QPushButton* createToolButton(const QString& text, const QString& tooltip = "");
 
     PaintArea *paintArea;
     QColor currentColor;
     QPushButton *colorBtn;
     QSpinBox *sizeSpinBox;
     QComboBox *shapeComboBox;
-    QPushButton *openBtn;
-    QPushButton *saveBtn;
     QAction *undoAction;
     QAction *redoAction;
 
-    // Status bar labels
+    // Status bar widgets
     QLabel *cursorPosLabel;
-    QLabel *shapeLabel;
-    QLabel *sizeLabel;
+    QLabel *shapeInfoLabel;
+    QLabel *zoomLabel;
 };
-
 #endif // MAINWINDOW_H
