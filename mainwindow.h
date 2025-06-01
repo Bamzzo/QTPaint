@@ -6,6 +6,8 @@
 #include <QSpinBox>
 #include <QComboBox>
 #include <QToolBar>
+#include <QStatusBar>
+#include <QLabel>
 #include "paintarea.h"
 
 class MainWindow : public QMainWindow
@@ -22,17 +24,27 @@ private slots:
     void openImage();
     void undo();
     void redo();
+    void updateCursorPosition(const QPoint& pos);
 
 private:
+    void createToolBar();
+    void createStatusBar();
+    void setupShortcuts();
+
     PaintArea *paintArea;
     QColor currentColor;
     QPushButton *colorBtn;
     QSpinBox *sizeSpinBox;
     QComboBox *shapeComboBox;
     QPushButton *openBtn;
+    QPushButton *saveBtn;
     QAction *undoAction;
     QAction *redoAction;
 
-    void createToolBar();
+    // Status bar labels
+    QLabel *cursorPosLabel;
+    QLabel *shapeLabel;
+    QLabel *sizeLabel;
 };
+
 #endif // MAINWINDOW_H

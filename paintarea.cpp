@@ -102,7 +102,7 @@ void PaintArea::resizeEvent(QResizeEvent *event)
     QWidget::resizeEvent(event);
     updateScaleAndOffset();
 
-    QSize newSize = event->size();
+
     if (!originalImage.isNull()) {
         if (image.size() != originalImage.size()) {
             QImage newImage(originalImage.size(), QImage::Format_ARGB32_Premultiplied);
@@ -135,23 +135,27 @@ void PaintArea::saveImage(const QString &fileName)
 
 void PaintArea::loadImage(const QString &fileName)
 {
+    qDebug() << "Opening image";
     QImage loadedImage;
     if (!loadedImage.load(fileName)) return;
 
+    // 保存当前状态（导入图片前的状态）
     saveState();
-    originalImage = loadedImage.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 
-    // 修改为直接使用原始尺寸
+    // 设置新图片
+    originalImage = loadedImage.convertToFormat(QImage::Format_ARGB32_Premultiplied);
     image = QImage(originalImage.size(), QImage::Format_ARGB32_Premultiplied);
     image.fill(Qt::transparent);
     QPainter painter(&image);
-    painter.drawImage(0, 0, originalImage); // 将原始图像绘制到当前画布
+    painter.drawImage(0, 0, originalImage);
 
-    // 触发尺寸更新
+    // 保存新状态（仅图片导入）
+    saveState();
+
     updateScaleAndOffset();
     update();
+    qDebug() << "Image opened";
 }
-
 
 void PaintArea::paintEvent(QPaintEvent *event)
 {
@@ -204,6 +208,7 @@ void PaintArea::mousePressEvent(QMouseEvent *event)
 void PaintArea::mouseMoveEvent(QMouseEvent *event)
 {
     QPoint currentLogicalPos = physicalToLogical(event->pos());
+    emit cursorPositionChanged(currentLogicalPos);
 
     if (isSelecting) {
         selectionEnd = currentLogicalPos;
@@ -345,20 +350,13 @@ void PaintArea::undo()
         redoStack.push(undoStack.pop());
         QImage stateImage = undoStack.top();
 
-        // 分离原始图像和绘制层
-        originalImage = QImage(stateImage.size(), QImage::Format_ARGB32_Premultiplied);
-        originalImage.fill(Qt::transparent);
-        QPainter painter(&originalImage);
-        painter.drawImage(0, 0, stateImage);
-
-        image = QImage(stateImage.size(), QImage::Format_ARGB32_Premultiplied);
-        image.fill(Qt::transparent);
-
-        QResizeEvent fakeEvent(size(), size());
-        resizeEvent(&fakeEvent);
+        // 直接更新图像
+        image = stateImage;
+        updateScaleAndOffset();
         update();
     }
 }
+
 
 void PaintArea::redo()
 {

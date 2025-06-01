@@ -8,153 +8,149 @@
 #include <QToolBar>
 #include <QAction>
 #include <QDebug>
+#include <QShortcut>
+#include <QStyleFactory>
+#include <QStatusBar>
+#include <QPalette>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), currentColor(Qt::black)
 {
-    qDebug() << "MainWindow constructor called";
+    // 设置现代风格
+    QApplication::setStyle(QStyleFactory::create("Fusion"));
 
-    setWindowTitle("Paint Program");
+    // 设置调色板
+    QPalette palette;
+    palette.setColor(QPalette::Window, QColor(53,53,53));
+    palette.setColor(QPalette::WindowText, Qt::white);
+    palette.setColor(QPalette::Base, QColor(25,25,25));
+    palette.setColor(QPalette::AlternateBase, QColor(53,53,53));
+    palette.setColor(QPalette::ToolTipBase, Qt::white);
+    palette.setColor(QPalette::ToolTipText, Qt::white);
+    palette.setColor(QPalette::Text, Qt::white);
+    palette.setColor(QPalette::Button, QColor(53,53,53));
+    palette.setColor(QPalette::ButtonText, Qt::white);
+    palette.setColor(QPalette::BrightText, Qt::red);
+    palette.setColor(QPalette::Link, QColor(42, 130, 218));
+    palette.setColor(QPalette::Highlight, QColor(42, 130, 218));
+    palette.setColor(QPalette::HighlightedText, Qt::black);
+    qApp->setPalette(palette);
+
+    setWindowTitle("绘图工具");
     resize(1200, 800);
 
     // 创建绘图区域
     paintArea = new PaintArea(this);
-    if (!paintArea) {
-        qCritical() << "Failed to create PaintArea";
-        return;
-    }
     setCentralWidget(paintArea);
-    qDebug() << "PaintArea created and set as central widget";
+    connect(paintArea, &PaintArea::cursorPositionChanged, this, &MainWindow::updateCursorPosition);
 
-    // 初始化颜色按钮
-    colorBtn = new QPushButton(this);
-    if (!colorBtn) {
-        qCritical() << "Failed to create color button";
-        return;
-    }
-    colorBtn->setStyleSheet("background-color: black");
-    colorBtn->setFixedSize(32, 32);
-    connect(colorBtn, &QPushButton::clicked, this, &MainWindow::changeColor);
-    qDebug() << "Color button created and connected";
-
-    // 形状选择
-    shapeComboBox = new QComboBox(this);
-    if (!shapeComboBox) {
-        qCritical() << "Failed to create shape combo box";
-        return;
-    }
-    shapeComboBox->addItems({"自由绘制", "直线", "矩形", "椭圆", "箭头", "五角星", "菱形", "心形", "橡皮擦", "编组选择"});
-    shapeComboBox->setFixedWidth(120);
-    shapeComboBox->setSizeAdjustPolicy(QComboBox::AdjustToContents); // ✅ 正确位置
-    connect(shapeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::changeShape);
-
-    // 画笔大小设置（后创建）
-    sizeSpinBox = new QSpinBox(this);
-    if (!sizeSpinBox) {
-        qCritical() << "Failed to create size spin box";
-        return;
-    }
-    sizeSpinBox->setMaximum(100);
-    sizeSpinBox->setValue(3);
-    sizeSpinBox->setFixedWidth(60);
-    connect(sizeSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &MainWindow::changeBrushSize);
-    qDebug() << "Shape combo box created and connected";
-
-    // 撤销/重做按钮
-    undoAction = new QAction("撤销", this);
-    if (!undoAction) {
-        qCritical() << "Failed to create undo action";
-        return;
-    }
-    redoAction = new QAction("重做", this);
-    if (!redoAction) {
-        qCritical() << "Failed to create redo action";
-        return;
-    }
-    connect(undoAction, &QAction::triggered, this, &MainWindow::undo);
-    connect(redoAction, &QAction::triggered, this, &MainWindow::redo);
-    qDebug() << "Undo and redo actions created and connected";
-
-    openBtn = new QPushButton("打开", this);
-    connect(openBtn, &QPushButton::clicked, this, &MainWindow::openImage);
-    // 创建工具栏
+    // 初始化UI组件
     createToolBar();
-
-    qDebug() << "MainWindow constructor finished";
+    createStatusBar();
+    setupShortcuts();
 }
 
 void MainWindow::createToolBar()
 {
-    qDebug() << "Creating toolbar";
+    // 主工具栏
+    QToolBar *mainToolBar = addToolBar("主工具栏");
+    mainToolBar->setMovable(false);
+    mainToolBar->setIconSize(QSize(24, 24));
 
-    QToolBar *toolBar = addToolBar("工具");
-    if (!toolBar) {
-        qCritical() << "Failed to create toolbar";
-        return;
-    }
+    // 形状选择
+    shapeComboBox = new QComboBox(this);
+    shapeComboBox->addItems({"自由绘制", "直线", "矩形", "椭圆", "箭头", "五角星", "菱形", "心形", "橡皮擦", "编组选择"});
+    shapeComboBox->setFixedWidth(120);
+    shapeComboBox->setStyleSheet("QComboBox { color: white; }");
+    connect(shapeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::changeShape);
 
-    // 工具栏左侧部分
-    QLabel *sizeLabel = new QLabel(" 大小:", this);
-    if (!sizeLabel) {
-        qCritical() << "Failed to create size label";
-        return;
-    }
-    toolBar->addWidget(sizeLabel);
-    qDebug() << "Size label added to toolbar";
+    // 画笔大小设置
+    sizeSpinBox = new QSpinBox(this);
+    sizeSpinBox->setRange(1, 100);
+    sizeSpinBox->setValue(3);
+    sizeSpinBox->setFixedWidth(60);
+    sizeSpinBox->setStyleSheet("QSpinBox { color: white; }");
+    connect(sizeSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &MainWindow::changeBrushSize);
 
-    toolBar->addWidget(sizeSpinBox);
-    qDebug() << "Size spin box added to toolbar";
+    // 颜色按钮
+    colorBtn = new QPushButton(this);
+    colorBtn->setFixedSize(32, 32);
+    colorBtn->setStyleSheet(QString(
+                                "QPushButton { background-color: %1; border: 1px solid #666; border-radius: 3px; }"
+                                "QPushButton:hover { border: 1px solid #aaa; }"
+                                ).arg(currentColor.name()));
+    connect(colorBtn, &QPushButton::clicked, this, &MainWindow::changeColor);
 
-    QLabel *shapeLabel = new QLabel(" 形状:", this);
-    if (!shapeLabel) {
-        qCritical() << "Failed to create shape label";
-        return;
-    }
-    toolBar->addWidget(shapeLabel);
-    qDebug() << "Shape label added to toolbar";
+    // 文件操作按钮
+    openBtn = new QPushButton("打开", this);
+    openBtn->setStyleSheet("QPushButton { padding: 3px 8px; }");
+    connect(openBtn, &QPushButton::clicked, this, &MainWindow::openImage);
 
-    toolBar->addWidget(shapeComboBox);
-    qDebug() << "Shape combo box added to toolbar";
-
-    toolBar->addSeparator();
-    qDebug() << "Separator added to toolbar";
-
-    toolBar->addWidget(colorBtn);
-    qDebug() << "Color button added to toolbar";
-
-    toolBar->addWidget(openBtn);  // 添加打开按钮
-    qDebug() << "Open button added to toolbar";
-
-    QPushButton *saveBtn = new QPushButton("保存", this);
-    if (!saveBtn) {
-        qCritical() << "Failed to create save button in toolbar";
-        return;
-    }
+    saveBtn = new QPushButton("保存", this);
+    saveBtn->setStyleSheet("QPushButton { padding: 3px 8px; }");
     connect(saveBtn, &QPushButton::clicked, this, &MainWindow::saveImage);
-    toolBar->addWidget(saveBtn);
-    qDebug() << "Save button added to toolbar";
 
-    // 工具栏右侧部分
-    toolBar->addSeparator();
-    qDebug() << "Separator added to toolbar";
+    // 撤销/重做按钮
+    undoAction = new QAction("撤销", this);
+    undoAction->setShortcut(QKeySequence::Undo);
+    redoAction = new QAction("重做", this);
+    redoAction->setShortcut(QKeySequence::Redo);
+    connect(undoAction, &QAction::triggered, this, &MainWindow::undo);
+    connect(redoAction, &QAction::triggered, this, &MainWindow::redo);
 
-    toolBar->addAction(undoAction);
-    qDebug() << "Undo action added to toolbar";
+    // 添加工具栏组件
+    mainToolBar->addWidget(new QLabel(" 工具: ", this));
+    mainToolBar->addWidget(shapeComboBox);
+    mainToolBar->addSeparator();
 
-    toolBar->addAction(redoAction);
-    qDebug() << "Redo action added to toolbar";
+    mainToolBar->addWidget(new QLabel(" 大小: ", this));
+    mainToolBar->addWidget(sizeSpinBox);
+    mainToolBar->addSeparator();
 
-    qDebug() << "Toolbar created";
+    mainToolBar->addWidget(new QLabel(" 颜色: ", this));
+    mainToolBar->addWidget(colorBtn);
+    mainToolBar->addSeparator();
+
+    mainToolBar->addWidget(openBtn);
+    mainToolBar->addWidget(saveBtn);
+    mainToolBar->addSeparator();
+
+    mainToolBar->addAction(undoAction);
+    mainToolBar->addAction(redoAction);
+}
+
+void MainWindow::createStatusBar()
+{
+    cursorPosLabel = new QLabel("坐标: (0, 0)", this);
+    shapeLabel = new QLabel("工具: 自由绘制", this);
+    sizeLabel = new QLabel("大小: 3px", this);
+
+    statusBar()->addPermanentWidget(cursorPosLabel);
+    statusBar()->addPermanentWidget(shapeLabel);
+    statusBar()->addPermanentWidget(sizeLabel);
+
+    statusBar()->setStyleSheet("QStatusBar { color: #aaa; }");
+}
+
+void MainWindow::setupShortcuts()
+{
+    // 添加更多快捷键
+    new QShortcut(QKeySequence::Save, this, SLOT(saveImage()));
+    new QShortcut(QKeySequence::Open, this, SLOT(openImage()));
 }
 
 void MainWindow::changeColor()
 {
-    QColor newColor = QColorDialog::getColor(currentColor);
+    QColor newColor = QColorDialog::getColor(currentColor, this, "选择颜色",
+                                             QColorDialog::DontUseNativeDialog);
     if (newColor.isValid()) {
         currentColor = newColor;
-        colorBtn->setStyleSheet(QString("background-color: %1").arg(currentColor.name()));
+        colorBtn->setStyleSheet(QString(
+                                    "QPushButton { background-color: %1; border: 1px solid #666; border-radius: 3px; }"
+                                    "QPushButton:hover { border: 1px solid #aaa; }"
+                                    ).arg(currentColor.name()));
         paintArea->setPenColor(currentColor);
     }
 }
@@ -162,46 +158,44 @@ void MainWindow::changeColor()
 void MainWindow::changeBrushSize(int size)
 {
     paintArea->setPenWidth(size);
+    sizeLabel->setText(QString("大小: %1px").arg(size));
 }
 
 void MainWindow::changeShape(int index)
 {
     paintArea->setDrawShape(static_cast<PaintArea::DrawShape>(index));
+    shapeLabel->setText(QString("工具: %1").arg(shapeComboBox->currentText()));
+}
+
+void MainWindow::updateCursorPosition(const QPoint& pos)
+{
+    cursorPosLabel->setText(QString("坐标: (%1, %2)").arg(pos.x()).arg(pos.y()));
 }
 
 void MainWindow::saveImage()
 {
-    qDebug() << "Saving image";
-
-    QString filePath = QFileDialog::getSaveFileName(this, "保存图片", "", "PNG文件(*.png)");
+    QString filePath = QFileDialog::getSaveFileName(this, "保存图片", "", "PNG文件(*.png);;JPEG文件(*.jpg *.jpeg);;BMP文件(*.bmp)");
     if (!filePath.isEmpty()) {
         paintArea->saveImage(filePath);
     }
+}
 
-    qDebug() << "Image saved";
+void MainWindow::openImage()
+{
+    QString filePath = QFileDialog::getOpenFileName(this, "打开图片", "", "图片文件(*.png *.jpg *.jpeg *.bmp)");
+    if (!filePath.isEmpty()) {
+        paintArea->loadImage(filePath);
+    }
 }
 
 void MainWindow::undo()
 {
-    qDebug() << "Undoing last action";
-
     paintArea->undo();
-    update(); // 强制更新界面
+    update();
 }
 
 void MainWindow::redo()
 {
-    qDebug() << "Redoing last undone action";
-
     paintArea->redo();
-    update(); // 强制更新界面
+    update();
 }
-void MainWindow::openImage()
-    {
-        qDebug() << "Opening image";
-        QString filePath = QFileDialog::getOpenFileName(this, "打开图片", "", "PNG文件(*.png)");
-        if (!filePath.isEmpty()) {
-                paintArea->loadImage(filePath);
-            }
-        qDebug() << "Image opened";
-    }

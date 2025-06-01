@@ -78,6 +78,7 @@ private:
     QStack<QImage> undoStack;
     QStack<QImage> redoStack;
 
-
+signals:
+    void cursorPositionChanged(const QPoint& pos);
 };
 #endif // PAINTAREA_H
