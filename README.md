@@ -92,7 +92,8 @@ void StarShape::draw(QPainter& painter) const {
 | 1.2 | 优化视觉效果 |
 | 1.3 | 添加图标和操作指引 |
 
-![软件界面](media/image26.png)
+<img width="519" alt="e9e8cfb0959db3f29280c34f2efad59" src="https://github.com/user-attachments/assets/a46cb03d-20c9-4d8c-93df-c5279192d741" />
+
 
 ## 项目结构
 
